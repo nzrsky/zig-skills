@@ -6,7 +6,7 @@ AI coding assistant skills providing verified, version-specific Zig API document
 
 | Skill | Description | Target Version |
 |-------|-------------|----------------|
-| [zig](./zig/) | Zig language API guide with 60+ reference files | Zig 0.15.x |
+| [zig](./zig/) | Zig language API guide with 57 reference files | Zig 0.15.x |
 
 ## Why?
 
@@ -18,7 +18,7 @@ Most LLM training data contains outdated Zig patterns (0.11-0.13 era) that cause
 - PascalCase `@typeInfo` fields (`.Struct`) instead of lowercase (`.@"struct"`)
 - Using removed features: `async`/`await`, `usingnamespace`, `BoundedArray`
 
-This skill catches all of these and 50+ more breaking changes.
+This skill catches all of these and dozens more breaking changes.
 
 ## What's Included
 
@@ -32,7 +32,7 @@ This skill catches all of these and 50+ more breaking changes.
 - Verification workflow
 - Common pitfalls checklist
 
-### Reference Files (60+ files in `references/`)
+### Reference Files (57 files in `references/`)
 - Complete std library API references (ArrayList, HashMap, JSON, HTTP, crypto, etc.)
 - Language basics, builtins, comptime metaprogramming
 - Production patterns from Bun, Ghostty, TigerBeetle
@@ -45,17 +45,16 @@ This skill catches all of these and 50+ more breaking changes.
 ### Claude Code (recommended)
 
 ```bash
-# Install via skills.sh
-claude install-skill https://skills.sh/nzrsky/zig-skills/zig
+# Install globally via npx skills
+npx -y skills add https://github.com/nzrsky/zig-skills --skill zig --yes --global --agent claude-code
 ```
 
 Or manually:
 ```bash
-# Clone into your Claude skills directory
-git clone https://github.com/nzrsky/zig-skills.git ~/.claude/skills/zig-skills
-
-# Or copy just the skill you need
-cp -r zig-skills/zig ~/.claude/skills/zig
+# Copy into your Claude skills directory
+git clone https://github.com/nzrsky/zig-skills.git /tmp/zig-skills
+cp -r /tmp/zig-skills/zig ~/.claude/skills/zig
+rm -rf /tmp/zig-skills
 ```
 
 ### OpenCode / Codex
