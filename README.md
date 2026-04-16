@@ -6,14 +6,19 @@ AI coding assistant skills providing verified, version-specific Zig API document
 
 | Skill | Description | Target Version |
 |-------|-------------|----------------|
-| [zig](./skills/zig/) | Zig language API guide with 57 reference files | Zig 0.15.x |
+| [zig](./skills/zig/) | Zig language API guide with 57 reference files | Zig 0.16.0 |
 
 ## Why?
 
-Most LLM training data contains outdated Zig patterns (0.11-0.13 era) that cause compilation errors on modern Zig. Common mistakes include:
+Most LLM training data contains outdated Zig patterns (0.11-0.14 era) that cause compilation errors on modern Zig. Common mistakes include:
 
-- Using `root_source_file` instead of `root_module` in build.zig
-- Old I/O API (`std.io.getStdOut().writer()`) instead of new buffered writer pattern
+- Using `std.net` instead of `std.Io.net` (0.16 — networking requires `Io` instance)
+- Calling `std.time.timestamp()` instead of `std.c.clock_gettime` (0.16 — removed)
+- Using `std.Thread.Mutex`/`Condition`/`sleep` instead of POSIX pthreads (0.16 — removed)
+- Using `std.crypto.random` instead of `arc4random_buf` (0.16 — removed)
+- Calling `lib.addIncludePath(...)` instead of `lib.root_module.addIncludePath(...)` (0.16 — moved)
+- Using `root_source_file` instead of `root_module` in build.zig (0.15)
+- Old I/O API (`std.io.getStdOut().writer()`) instead of new buffered writer pattern (0.15)
 - `std.ArrayList` without passing allocator to every method (now unmanaged by default)
 - PascalCase `@typeInfo` fields (`.Struct`) instead of lowercase (`.@"struct"`)
 - Using removed features: `async`/`await`, `usingnamespace`, `BoundedArray`
@@ -24,11 +29,13 @@ This skill catches all of these and dozens more breaking changes.
 
 ### Main Skill (`SKILL.md`)
 - Design principles (type-first development, make illegal states unrepresentable)
-- All breaking changes from 0.14/0.15 with WRONG/CORRECT examples
+- All breaking changes from 0.14/0.15/0.16 with WRONG/CORRECT examples
+- 0.16 migration: networking (`std.Io.net`), time, threading, crypto, debug, build system
 - I/O API rewrite ("Writergate") patterns
-- Build system migration guide
+- Build system migration guide (including `Compile.*` → `Module.*` for 0.16)
 - Container initialization rules (`.empty`/`.init`)
-- Quick fixes error table (14 common errors with solutions)
+- Quick fixes error table (25 common errors with solutions)
+- Version managers: zigup, anyzig
 - Verification workflow
 - Common pitfalls checklist
 
