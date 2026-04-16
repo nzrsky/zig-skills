@@ -1,7 +1,7 @@
 {
   "listing": {
     "title": "Zig Skills for AI Coding Assistants",
-    "tagline": "Verified Zig 0.15.x API documentation that prevents outdated pattern generation",
+    "tagline": "Verified Zig 0.16.0 API documentation that prevents outdated pattern generation",
     "category": "programming-language",
     "tags": ["zig", "systems-programming", "build-system", "comptime"],
     "icon": "https://ziglang.org/zig-logo.svg"

@@ -1,6 +1,32 @@
-# std.io - I/O API Reference (0.15.x)
+# std.io - I/O API Reference (0.15.x → 0.16)
 
 New buffered I/O API introduced in Zig 0.15.x ("Writergate"). Non-generic, buffer-integrated Reader and Writer interfaces.
+
+## Critical: std.io (lowercase) Removed in 0.16
+
+In Zig 0.16, the `std.io` namespace (lowercase) is completely removed. `std.Io` (capital) is the async IO module with different semantics.
+
+### fixedBufferStream → std.fmt.bufPrint
+```zig
+// WRONG (0.16) — std.io.fixedBufferStream removed
+var buf: [512]u8 = undefined;
+var stream = std.io.fixedBufferStream(&buf);
+try std.fmt.format(stream.writer(), "{d}", .{value});
+const result = stream.getWritten();
+
+// CORRECT — use std.fmt.bufPrint
+var buf: [512]u8 = undefined;
+const result = try std.fmt.bufPrint(&buf, "{d}", .{value});
+```
+
+### Vtable Writer Parameter
+```zig
+// WRONG — *std.io.Writer (lowercase, removed)
+fn drain(w: *std.io.Writer) error{WriteFailed}!usize { ... }
+
+// CORRECT — *std.Io.Writer (capital)
+fn drain(w: *std.Io.Writer) error{WriteFailed}!usize { ... }
+```
 
 ## Table of Contents
 - [Critical Migration](#critical-migration)

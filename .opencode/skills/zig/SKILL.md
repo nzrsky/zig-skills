@@ -1,20 +1,22 @@
 ---
 name: zig
-description: Up-to-date Zig programming language patterns for version 0.15.2. Use when writing, reviewing, or debugging Zig code, working with build.zig and build.zig.zon files, or using comptime metaprogramming. Critical for avoiding outdated patterns from training data - especially build system APIs (root_module instead of root_source_file, addLibrary with linkage), I/O APIs (buffered writer pattern), container initialization (.empty/.init), allocator selection (DebugAllocator), ArrayList now unmanaged by default, @typeInfo lowercase fields (.@"struct" not .Struct), and removed language features (async/await, usingnamespace).
+description: Up-to-date Zig programming language patterns for version 0.16.0. Use when writing, reviewing, or debugging Zig code, working with build.zig and build.zig.zon files, or using comptime metaprogramming. Critical for avoiding outdated patterns from training data - especially std.net→std.Io.net (requires Io instance), std.time timestamps removed (use clock_gettime), std.Thread.Mutex/Condition/sleep removed (use pthreads), std.crypto.random removed, build system APIs (root_module, Compile methods→Module methods), I/O APIs (buffered writer pattern), container initialization (.empty/.init), allocator selection (DebugAllocator), ArrayList now unmanaged by default, @typeInfo lowercase fields (.@"struct" not .Struct), and removed language features (async/await, usingnamespace).
 license: MIT
 compatibility:
   - claude-code
   - opencode
   - codex
 metadata:
-  version: "0.15.2"
+  version: "0.16.0"
   language: "zig"
   category: "programming-language"
 ---
 
-# Zig Language Reference (v0.15.2)
+# Zig Language Reference (v0.16.0)
 
 Zig evolves rapidly. Training data contains outdated patterns that cause compilation errors. This skill documents breaking changes and correct modern patterns.
+
+**Version coverage:** 0.16.0 (current) with migration notes from 0.15.x and 0.14.x.
 
 ## Design Principles
 
@@ -87,6 +89,171 @@ while (condition) : (n += 1) {}
 var buffer: [256]u8 = undefined;
 ```
 
+## Critical: Networking Removed — `std.net` → `std.Io.net` (0.16)
+
+`std.net` is **completely removed** in 0.16. Replaced by `std.Io.net`, which requires an `Io` instance.
+
+### Accept Loop
+```zig
+// WRONG (0.15) — std.net removed
+const addr = std.net.Address.parseIp4(host, port) catch unreachable;
+var server = addr.listen(.{ .reuse_address = true }) catch unreachable;
+const conn = server.accept() catch continue;
+defer conn.stream.close();
+
+// CORRECT (0.16) — std.Io.net with Io instance
+const addr = try std.Io.net.IpAddress.parse(host, port);
+var server = try addr.listen(io, .{ .reuse_address = true });
+const stream = try server.accept();  // returns Stream directly, no .stream wrapper
+defer stream.close(io);              // close() now takes io
+```
+
+### Io Runtime Setup
+```zig
+// Create Io instance at startup, thread it through your program
+var threaded = std.Io.Threaded.init(std.heap.c_allocator);
+var io: std.Io = threaded.io();
+```
+
+### Stream Changes
+```zig
+// stream.handle → stream.socket.handle
+std.posix.setsockopt(stream.socket.handle, ...);
+
+// Io.net.Stream has NO .read() or .writeAll() — use raw C calls for blocking I/O:
+extern "c" fn write(fd: c_int, buf: [*]const u8, n: usize) isize;
+
+fn writeAll(stream: std.Io.net.Stream, data: []const u8) !void {
+    var rem = data;
+    while (rem.len > 0) {
+        const n = write(stream.socket.handle, rem.ptr, rem.len);
+        if (n <= 0) return error.BrokenPipe;
+        rem = rem[@intCast(n)..];
+    }
+}
+// std.posix.read() still works for reading
+```
+
+### Removed Convenience Functions
+```zig
+// connectUnixSocket, tcpConnectToHost — removed, use C externs:
+extern "c" fn socket(domain: c_int, typ: c_int, proto: c_int) c_int;
+extern "c" fn connect(fd: c_int, addr: *const anyopaque, len: u32) c_int;
+// IMPORTANT: don't name local variables "socket" or "connect" — shadows extern
+
+// std.net.has_unix_sockets → std.Io.net.has_unix_sockets
+// std.posix.close → std.c.close  (posix.close removed)
+// std.posix.write/connect/socket — removed, use std.c.* or extern "c"
+```
+
+See **[std.net reference](references/std-net.md)** for complete networking documentation.
+
+## Critical: Time APIs Removed (0.16)
+
+`std.time.timestamp()`, `milliTimestamp()`, `microTimestamp()`, `nanoTimestamp()` are **removed**. Use `std.c.clock_gettime`:
+
+```zig
+// WRONG (0.16) — removed
+const secs = std.time.timestamp();
+const ms = std.time.milliTimestamp();
+
+// CORRECT — clock_gettime replacement
+fn timestampSec() i64 {
+    var ts: std.c.timespec = undefined;
+    _ = std.c.clock_gettime(.REALTIME, &ts);
+    return ts.sec;
+}
+
+fn milliTimestamp() i64 {
+    var ts: std.c.timespec = undefined;
+    _ = std.c.clock_gettime(.REALTIME, &ts);
+    return @as(i64, ts.sec) * 1000 + @divTrunc(@as(i64, ts.nsec), 1_000_000);
+}
+```
+
+**Note:** `ts.nsec` is signed — use `@divTrunc`, not `/` (0.16 enforces this for signed division).
+
+`std.time.ns_per_s`, `Instant`, `Timer` — **still present**.
+
+## Critical: Thread Primitives Removed (0.16)
+
+`std.Thread.Mutex`, `std.Thread.Condition`, `std.Thread.sleep` are **removed**. The 0.16 replacements (`std.Io.Mutex`/`std.Io.Condition`) require an `Io` instance. For library code without `Io`, use POSIX shims:
+
+```zig
+// WRONG (0.16)
+var mutex: std.Thread.Mutex = .{};
+mutex.lock();
+
+// CORRECT — pthread shim (works without Io)
+const PthreadMutex = struct {
+    inner: std.c.pthread_mutex_t = std.c.PTHREAD_MUTEX_INITIALIZER,
+    pub fn lock(m: *@This()) void { _ = std.c.pthread_mutex_lock(&m.inner); }
+    pub fn unlock(m: *@This()) void { _ = std.c.pthread_mutex_unlock(&m.inner); }
+    pub fn tryLock(m: *@This()) bool {
+        return @intFromEnum(std.c.pthread_mutex_trylock(&m.inner)) == 0;
+    }
+};
+
+// std.Thread.sleep → nanosleep
+fn threadSleep(ns: u64) void {
+    const ts = std.c.timespec{
+        .sec = @intCast(ns / std.time.ns_per_s),
+        .nsec = @intCast(ns % std.time.ns_per_s),
+    };
+    _ = std.c.nanosleep(&ts, null);
+}
+```
+
+`std.Thread.spawn` — **unchanged**.
+
+See **[std.Thread reference](references/std-thread.md)** for complete threading documentation including PthreadCondition.
+
+## Critical: Debug Stderr Changed (0.16)
+
+```zig
+// WRONG (0.16) — lockStderrWriter removed
+const stderr = std.debug.lockStderrWriter();
+defer std.debug.unlockStderr();
+try stderr.print("msg\n", .{});
+
+// CORRECT — lockStderr with buffer
+var buf: [4096]u8 = undefined;
+const held = std.debug.lockStderr(&buf);
+defer std.debug.unlockStderr();
+try held.file_writer.print("msg\n", .{});
+```
+
+## Critical: `std.crypto.random` Removed (0.16)
+
+```zig
+// WRONG (0.16) — removed
+std.crypto.random.bytes(&nonce);
+
+// CORRECT — platform-specific
+extern "c" fn arc4random_buf(buf: *anyopaque, nbytes: usize) void;
+arc4random_buf(&nonce, nonce.len);  // macOS + Linux glibc 2.36+
+
+// Linux-only (no glibc dependency):
+_ = std.os.linux.getrandom(buf.ptr, buf.len, 0);
+```
+
+**Note:** `std.posix.getrandom` does NOT exist in 0.16.
+
+## Critical: Scoping Rule Tightened (0.16)
+
+Local constants **cannot shadow** module-level `extern` declarations:
+```zig
+extern "c" fn socket(...) c_int;
+
+fn myConnect() !void {
+    // WRONG — "local constant shadows declaration of socket"
+    const socket = blk: { ... };
+
+    // CORRECT — use different name
+    const sock_fd = blk: { ... };
+}
+```
+
 ## Critical: I/O API Rewrite ("Writergate")
 
 The entire `std.io` API changed. New `std.Io.Writer` and `std.Io.Reader` are **non-generic** with buffer in the interface.
@@ -147,6 +314,28 @@ const line = (try r.takeDelimiter('\n')).?;  // "hello" (returns null at EOF)
 - `BufferedWriter` -> buffer provided to `.writer(&buf)` call
 - Allocating output -> `std.Io.Writer.Allocating`
 
+### `std.io.fixedBufferStream` Removed (0.16)
+```zig
+// WRONG (0.16) — std.io (lowercase) removed entirely
+var buf: [512]u8 = undefined;
+var stream = std.io.fixedBufferStream(&buf);
+try std.fmt.format(stream.writer(), "{d}", .{value});
+const result = stream.getWritten();
+
+// CORRECT — use std.fmt.bufPrint directly
+var buf: [512]u8 = undefined;
+const result = try std.fmt.bufPrint(&buf, "{d}", .{value});
+```
+
+### Vtable Writer Type Changed (0.16)
+```zig
+// WRONG — *std.io.Writer (lowercase)
+fn drain(w: *std.io.Writer) error{WriteFailed}!usize { ... }
+
+// CORRECT — *std.Io.Writer (capital)
+fn drain(w: *std.Io.Writer) error{WriteFailed}!usize { ... }
+```
+
 ## Critical: Build System (0.15.x)
 
 `root_source_file` is REMOVED from `addExecutable`/`addLibrary`/`addTest`. Use `root_module`:
@@ -202,6 +391,23 @@ const dep = b.dependency("lib", .{ .target = target, .optimize = optimize });
 exe.root_module.addImport("lib", dep.module("lib"));
 ```
 
+### `Compile.*` Methods Moved to `Module.*` (0.16)
+
+In 0.16, methods like `addIncludePath`, `addLibraryPath`, `linkSystemLibrary`, `addCSourceFile` moved from the `Compile` step to the module:
+```zig
+// WRONG (0.16) — methods no longer on Compile
+lib.addIncludePath(.{ .cwd_relative = path });
+lib.linkSystemLibrary("foo");
+lib.addCSourceFile(.{ .file = b.path("shim.c"), .flags = &.{} });
+
+// CORRECT — use root_module
+lib.root_module.addIncludePath(.{ .cwd_relative = path });
+lib.root_module.linkSystemLibrary("foo", .{});  // note: now takes options struct
+lib.root_module.addCSourceFile(.{ .file = b.path("shim.c"), .flags = &.{} });
+```
+
+**Common misleading error:** `no field or member function named 'addIncludePath' in 'Build.Step.Compile'`. The note about `.*` is wrong — the fix is `lib.root_module.addIncludePath(...)`.
+
 See **[std.Build reference](references/std-build.md)** for complete build system documentation.
 
 ## Critical: Container Initialization
@@ -249,6 +455,16 @@ map.deinit(allocator);
 var map = std.StringHashMap(u32).init(allocator);
 try map.put("key", 42);
 map.deinit();
+```
+
+### ArrayListUnmanaged Empty Init (0.16)
+In 0.16, `.{}` zero-init no longer works for `ArrayListUnmanaged` — explicit fields required:
+```zig
+// WRONG (0.16) — .{} no longer zero-inits correctly
+._list = .{},
+
+// CORRECT — explicit fields
+._list = .{ .items = &.{}, .capacity = 0 },
 ```
 
 ### Naming Changes
@@ -412,6 +628,16 @@ var server = std.http.Server.init(
 | Error | Fix |
 |-------|-----|
 | `no field 'root_source_file'` | Use `root_module = b.createModule(.{...})` |
+| `'std.net' has no member 'Stream'` | Networking moved: use `std.Io.net.Stream` (0.16) |
+| `'std.net' has no member 'Address'` | Use `std.Io.net.IpAddress.parse(host, port)` (0.16) |
+| `no field 'addIncludePath' in 'Compile'` | Methods moved: `lib.root_module.addIncludePath(...)` (0.16) |
+| `'timestamp' not found in 'std.time'` | Removed: use `std.c.clock_gettime(.REALTIME, &ts)` (0.16) |
+| `'Mutex' not found in 'std.Thread'` | Removed: use POSIX `PthreadMutex` shim or `std.Io.Mutex` (0.16) |
+| `'random' not found in 'std.crypto'` | Removed: use `arc4random_buf` or `std.os.linux.getrandom` (0.16) |
+| `'lockStderrWriter' not found` | Renamed: use `std.debug.lockStderr(&buf)` (0.16) |
+| `local constant shadows declaration` | 0.16 forbids local names matching module-level `extern fn` — rename local |
+| `signed integer division` | Use `@divTrunc(a, b)` not `a / b` for signed integers (0.16) |
+| `no field 'close' in 'posix'` | `std.posix.close` removed: use `_ = std.c.close(fd)` (0.16) |
 | `use of undefined value` | Arithmetic on `undefined` is now illegal — initialize explicitly |
 | `type 'f32' cannot represent integer` | Use float literal: `123_456_789.0` not `123_456_789` |
 | `ambiguous format string` | Use `{f}` for format methods |
@@ -601,6 +827,34 @@ zls --config
 - Filesystem completions inside `@import("")` strings
 - `std` and `builtin` module path completions
 - Snippets for common declarations
+
+### zigup (Version Manager)
+Manage multiple Zig versions side-by-side. Useful for migrating between versions.
+
+**Source:** https://github.com/marler8997/zigup
+
+**Installation:**
+```bash
+brew install marler8997/tap/zigup
+```
+
+**Usage:**
+```bash
+zigup fetch 0.15.2          # download without changing default
+zigup fetch 0.16.0          # download without changing default
+zigup list                  # show installed versions
+zigup 0.16.0                # set as default
+zigup run 0.15.2 build      # run specific version without changing default
+zigup run 0.16.0 build test # test with specific version
+zigup clean 0.15.2          # remove old version
+```
+
+**Migration workflow:**
+```bash
+zigup run 0.16.0 zig build 2>&1 | head -40  # try build with new version
+# fix errors, re-run until clean
+zigup 0.16.0                                  # promote to default
+```
 
 ### anyzig (Version Manager)
 Universal Zig version manager — run any Zig version from any project. Replaces manual version switching.

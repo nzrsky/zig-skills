@@ -1,7 +1,31 @@
 
-# std.Build - Zig Build System Reference
+# std.Build - Zig Build System Reference (0.15.x → 0.16)
 
 The Zig build system models projects as directed acyclic graphs (DAG) of build steps. Build scripts are written in Zig itself (`build.zig`), providing full language features during configuration.
+
+## Critical: Compile Methods Moved to Module (0.16)
+
+In Zig 0.16, several methods moved from `Build.Step.Compile` to `Build.Module`:
+
+```zig
+// WRONG (0.16) — methods no longer on Compile
+lib.addIncludePath(.{ .cwd_relative = path });
+lib.addLibraryPath(.{ .cwd_relative = path });
+lib.linkSystemLibrary("foo");
+lib.addCSourceFile(.{ .file = b.path("shim.c"), .flags = &.{} });
+
+// CORRECT — use root_module
+lib.root_module.addIncludePath(.{ .cwd_relative = path });
+lib.root_module.addLibraryPath(.{ .cwd_relative = path });
+lib.root_module.linkSystemLibrary("foo", .{});  // note: now takes options struct
+lib.root_module.addCSourceFile(.{ .file = b.path("shim.c"), .flags = &.{} });
+```
+
+The compiler error `no field or member function named 'addIncludePath' in 'Build.Step.Compile'` with a misleading note about `.*` — the fix is to use `lib.root_module.addIncludePath(...)`.
+
+Fields that remain on `Compile` directly: `linker_allow_shlib_undefined`, `linkage`, `name`, etc.
+
+Methods like `b.addLibrary`, `b.createModule`, `b.dependency` are **unchanged**.
 
 ## Table of Contents
 - [Quick Start](#quick-start)
@@ -726,6 +750,8 @@ exe.addCSourceFile(.{
 });
 ```
 
+**Note (0.16):** These methods moved to `root_module`. Use `exe.root_module.addCSourceFiles(...)`, `exe.root_module.addIncludePath(...)`, `exe.root_module.linkSystemLibrary("lib", .{})` instead.
+
 ### Include Paths and Macros
 ```zig
 exe.addIncludePath(b.path("include"));
@@ -734,11 +760,20 @@ exe.root_module.addCMacro("DEBUG", "1");
 exe.root_module.addCMacro("VERSION", "\"1.0.0\"");
 ```
 
+```zig
+// 0.16: These methods moved to root_module
+exe.root_module.addIncludePath(b.path("include"));
+exe.root_module.addSystemIncludePath(b.path("deps/include"));
+```
+
 ### Linking Libraries
 ```zig
 // System library
 exe.linkSystemLibrary("pthread");
 exe.linkSystemLibrary("ssl");
+
+// 0.16: linkSystemLibrary moved to root_module and requires options struct
+exe.root_module.linkSystemLibrary("pthread", .{});
 
 // Static library file
 exe.addObjectFile(b.path("lib/libfoo.a"));

@@ -401,7 +401,21 @@ pbkdf2(HmacSha256, &key, password, salt, 100000);  // 100k iterations
 
 ## Secure Random
 
-Thread-local cryptographically secure PRNG:
+**Note (0.16):** `std.crypto.random` is removed. Use platform-specific alternatives:
+
+```zig
+// WRONG (0.16) — removed
+std.crypto.random.bytes(&key);
+
+// CORRECT — macOS + Linux glibc 2.36+
+extern "c" fn arc4random_buf(buf: *anyopaque, nbytes: usize) void;
+arc4random_buf(&key, key.len);
+
+// CORRECT — Linux only (no glibc dependency)
+_ = std.os.linux.getrandom(buf.ptr, buf.len, 0);
+```
+
+Thread-local cryptographically secure PRNG (0.15.x):
 
 ```zig
 const random = std.crypto.random;
@@ -515,9 +529,10 @@ Aes256Gcm.encrypt(&ct, &tag, pt, ad, nonce, key);
 ### Key Generation
 
 ```zig
-// For symmetric keys
+// For symmetric keys (0.15.x)
 var key: [32]u8 = undefined;
 std.crypto.random.bytes(&key);
+// NOTE: std.crypto.random.bytes is removed in 0.16 — use arc4random_buf or std.os.linux.getrandom
 
 // For asymmetric keys
 const kp = std.crypto.sign.Ed25519.KeyPair.generate();

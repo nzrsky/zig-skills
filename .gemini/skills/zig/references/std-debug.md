@@ -456,9 +456,16 @@ try stderr.writeAll("Line 2\n");
 Or with a writer:
 
 ```zig
+// 0.15.x
 var buf: [256]u8 = undefined;
 const writer = std.debug.lockStderrWriter(&buf);
 defer std.debug.unlockStderrWriter();
-
 try writer.print("Complex output: {}\n", .{value});
+
+// 0.16 — lockStderrWriter → lockStderr, different API
+var buf: [4096]u8 = undefined;
+const held = std.debug.lockStderr(&buf);
+defer std.debug.unlockStderr();
+// held.file_writer is a File.Writer; .interface is the Io.Writer
+try held.file_writer.print("msg: {s}\n", .{text});
 ```

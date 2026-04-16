@@ -106,6 +106,7 @@ try stack.appendSliceBounded(initial);
 | `.One`, `.Slice`, `.Many` | `.one`, `.slice`, `.many` | `Pointer.Size` lowercase |
 | `sentinel = &val` | `sentinel_ptr = &val` | Renamed in `Type.Array`/`Type.Pointer` |
 | Inline asm clobbers `"rcx"` | `.{ .rcx = true }` | Struct syntax for clobbers |
+| local shadows `extern fn` | rename local variable | 0.16 scoping rule |
 
 **Examples:**
 
@@ -164,6 +165,16 @@ asm volatile ("syscall"
 | `std.ArrayList` | `std.array_list.Managed` | Eventually removed |
 | `std.fifo.LinearFifo` | Use `std.Io.Reader`/`Writer` patterns | Removed; ring-buffer I/O approach |
 | `std.RingBuffer` | Use `std.Io.Reader`/`Writer` patterns | Removed; migrated to Io interfaces |
+| `std.net.*` | `std.Io.net.*` (requires Io instance) | std.net (0.16) |
+| `std.time.timestamp()` | `std.c.clock_gettime(.REALTIME, &ts)` | std.time (0.16) |
+| `std.Thread.Mutex/Condition` | POSIX pthread shims or `std.Io.Mutex` | std.Thread (0.16) |
+| `std.Thread.sleep` | `std.c.nanosleep` | std.Thread (0.16) |
+| `std.crypto.random` | `arc4random_buf` / `std.os.linux.getrandom` | std.crypto (0.16) |
+| `std.debug.lockStderrWriter` | `std.debug.lockStderr(&buf)` | std.debug (0.16) |
+| `std.posix.close/write/connect/socket` | `std.c.close` / C externs | std.posix (0.16) |
+| `lib.addIncludePath(...)` | `lib.root_module.addIncludePath(...)` | std.Build (0.16) |
+| `lib.linkSystemLibrary("x")` | `lib.root_module.linkSystemLibrary("x", .{})` | std.Build (0.16) |
+| `std.io.fixedBufferStream` | `std.fmt.bufPrint` | std.io (0.16) |
 
 **Examples:**
 
