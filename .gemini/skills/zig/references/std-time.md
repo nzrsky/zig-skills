@@ -1,6 +1,50 @@
-# std.time - Time and Timing
+# std.time - Time and Timing (0.15.x → 0.16)
 
 Wall-clock timestamps, monotonic timers, high-precision timing, and epoch/calendar utilities.
+
+## Critical: Wall-Clock Timestamps Removed (0.16)
+
+`std.time.timestamp()`, `milliTimestamp()`, `microTimestamp()`, and `nanoTimestamp()` are **removed** in Zig 0.16. Use `std.c.clock_gettime` directly:
+
+```zig
+// WRONG (0.16) — functions removed
+const secs = std.time.timestamp();
+const ms = std.time.milliTimestamp();
+
+// CORRECT — clock_gettime replacements
+fn timestampSec() i64 {
+    var ts: std.c.timespec = undefined;
+    _ = std.c.clock_gettime(.REALTIME, &ts);
+    return ts.sec;
+}
+
+fn milliTimestamp() i64 {
+    var ts: std.c.timespec = undefined;
+    _ = std.c.clock_gettime(.REALTIME, &ts);
+    return @as(i64, ts.sec) * 1000 + @divTrunc(@as(i64, ts.nsec), 1_000_000);
+}
+
+fn nanoTimestamp() i128 {
+    var ts: std.c.timespec = undefined;
+    _ = std.c.clock_gettime(.REALTIME, &ts);
+    return @as(i128, ts.sec) * 1_000_000_000 + @as(i128, ts.nsec);
+}
+```
+
+**Important:** `ts.nsec` is signed — use `@divTrunc`, not `/` (0.16 enforces `@divTrunc` for signed integer division).
+
+**Still present in 0.16:** `std.time.ns_per_s` and all time constants, `Instant`, `Timer`.
+
+**Also removed in 0.16:** `std.Thread.sleep` — use nanosleep:
+```zig
+fn threadSleep(ns: u64) void {
+    const ts = std.c.timespec{
+        .sec = @intCast(ns / std.time.ns_per_s),
+        .nsec = @intCast(ns % std.time.ns_per_s),
+    };
+    _ = std.c.nanosleep(&ts, null);
+}
+```
 
 ## Quick Reference
 
@@ -34,6 +78,8 @@ Need wall-clock time (date/time)?
 | `Timer` | ~1 ns | u64 | Benchmarking with monotonic guarantee |
 
 ## Wall-Clock Timestamps
+
+**Note (0.16):** These functions are removed in Zig 0.16. See migration section above for replacements.
 
 Get current time relative to Unix epoch (1970-01-01 UTC):
 
@@ -290,6 +336,8 @@ fn waitWithTimeout(timeout_ns: u64) !void {
         const now = try std.time.Instant.now();
         if (now.timestamp >= deadline) return error.Timeout;
 
+        // 0.15.x: std.Thread.sleep
+        // 0.16: Thread.sleep removed — use std.c.nanosleep instead
         std.Thread.sleep(std.time.ns_per_ms);  // 1ms
     }
 }
@@ -357,4 +405,4 @@ fn windowsToUnix(windows_secs: i64) i64 {
 - `Timer` saturates on clock jumps backward (always monotonic)
 - `epoch.EpochSeconds` expects unsigned `u64` (use `@intCast` from `timestamp()`)
 - Day and month indices in epoch module are 0-based
-- For sleeping, use `std.Thread.sleep(ns)` not time module
+- For sleeping: `std.Thread.sleep(ns)` (0.15.x) or `nanosleep` via `std.c.nanosleep` (0.16 — `Thread.sleep` removed)

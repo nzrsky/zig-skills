@@ -1,6 +1,51 @@
-# std.Thread - Threading and Concurrency API Reference
+# std.Thread - Threading and Concurrency API Reference (0.15.x → 0.16)
 
 Thread spawning, synchronization primitives, and concurrent programming in Zig 0.15.x.
+
+## Critical: Mutex, Condition, sleep Removed (0.16)
+
+In Zig 0.16, `std.Thread.Mutex`, `std.Thread.Condition`, and `std.Thread.sleep` are **removed**. The 0.16 replacements (`std.Io.Mutex` / `std.Io.Condition`) require an `Io` instance, which is not always available (e.g. in libraries/vendored deps).
+
+**POSIX shims (portable fallback):**
+
+```zig
+const PthreadMutex = struct {
+    inner: std.c.pthread_mutex_t = std.c.PTHREAD_MUTEX_INITIALIZER,
+    pub fn lock(m: *@This()) void { _ = std.c.pthread_mutex_lock(&m.inner); }
+    pub fn unlock(m: *@This()) void { _ = std.c.pthread_mutex_unlock(&m.inner); }
+    pub fn tryLock(m: *@This()) bool {
+        return @intFromEnum(std.c.pthread_mutex_trylock(&m.inner)) == 0;
+    }
+};
+
+const PthreadCondition = struct {
+    inner: std.c.pthread_cond_t = std.c.PTHREAD_COND_INITIALIZER,
+    pub fn signal(c: *@This()) void { _ = std.c.pthread_cond_signal(&c.inner); }
+    pub fn broadcast(c: *@This()) void { _ = std.c.pthread_cond_broadcast(&c.inner); }
+    pub fn timedWait(cond: *@This(), mutex: *PthreadMutex, timeout_ns: u64) !void {
+        var ts: std.c.timespec = undefined;
+        _ = std.c.clock_gettime(.REALTIME, &ts);
+        const now_ns: u128 = @as(u128, @intCast(ts.sec)) * 1_000_000_000 +
+                              @as(u128, @intCast(ts.nsec));
+        const deadline = std.c.timespec{
+            .sec = @intCast((now_ns + timeout_ns) / 1_000_000_000),
+            .nsec = @intCast((now_ns + timeout_ns) % 1_000_000_000),
+        };
+        const rc = std.c.pthread_cond_timedwait(&cond.inner, &mutex.inner, &deadline);
+        if (@intFromEnum(rc) == @intFromEnum(std.c.E.TIMEDOUT)) return error.Timeout;
+    }
+};
+
+fn threadSleep(ns: u64) void {
+    const ts = std.c.timespec{
+        .sec = @intCast(ns / std.time.ns_per_s),
+        .nsec = @intCast(ns % std.time.ns_per_s),
+    };
+    _ = std.c.nanosleep(&ts, null);
+}
+```
+
+**Still present in 0.16:** `std.Thread.spawn`, `std.Thread.Pool`, `std.Thread.WaitGroup`, `std.Thread.ResetEvent`, `std.Thread.Semaphore`, `std.Thread.RwLock`, `std.Thread.Futex`.
 
 ## Table of Contents
 - [Module Structure](#module-structure)
@@ -30,6 +75,8 @@ std.Thread.WaitGroup        // Wait for multiple tasks to complete
 std.Thread.Pool             // Thread pool for parallel task execution
 std.Thread.Futex            // Low-level futex operations (advanced)
 ```
+
+> **0.16 Note:** `std.Thread.Mutex`, `std.Thread.Mutex.Recursive`, and `std.Thread.Condition` are removed in Zig 0.16. Use `std.Io.Mutex` / `std.Io.Condition` (requires an `Io` instance) or the POSIX pthread shims shown in the migration section above.
 
 ## Spawning Threads
 
@@ -102,6 +149,8 @@ std.debug.print("CPUs: {d}\n", .{cpu_count});
 
 ### Sleep
 
+**Note (0.16):** `std.Thread.sleep` is removed. Use `nanosleep` via `std.c.nanosleep` (see migration section above).
+
 ```zig
 std.Thread.sleep(100 * std.time.ns_per_ms);  // sleep 100ms
 std.Thread.sleep(std.time.ns_per_s);          // sleep 1 second
@@ -131,6 +180,8 @@ if (try thread.getName(&name_buf)) |name| {
 ## Synchronization Primitives
 
 ### Mutex
+
+**Note (0.16):** `std.Thread.Mutex` is removed in Zig 0.16. Use `PthreadMutex` shim (see migration section above) or `std.Io.Mutex` if you have an `Io` instance.
 
 Basic mutual exclusion lock. Use `defer` for exception-safe unlocking.
 
@@ -210,6 +261,8 @@ if (rwlock.tryLock()) {
 ```
 
 ### Condition
+
+**Note (0.16):** `std.Thread.Condition` is removed in Zig 0.16. Use `PthreadCondition` shim (see migration section above) or `std.Io.Condition` if you have an `Io` instance.
 
 Wait for a condition to become true. Always use with a Mutex.
 

@@ -1,7 +1,7 @@
 {
   "name": "zig-skills",
-  "version": "0.15.2",
-  "description": "Up-to-date Zig programming language patterns for version 0.15.2. Prevents LLMs from generating code with deprecated or removed APIs from outdated training data.",
+  "version": "0.16.0",
+  "description": "Up-to-date Zig programming language patterns for version 0.16.0. Prevents LLMs from generating code with deprecated or removed APIs from outdated training data.",
   "author": "Nazavtra",
   "repository": "https://github.com/nzrsky/zig-skills",
   "license": "MIT",
@@ -18,7 +18,7 @@
       "path": "skills/zig/SKILL.md",
       "language": "zig",
       "category": "programming-language",
-      "version": "0.15.2"
+      "version": "0.16.0"
     }
   ]
 }

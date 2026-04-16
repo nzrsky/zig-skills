@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-A collection of AI coding assistant skills providing verified Zig 0.15.x API documentation. This is a **documentation-only repository** — no build system, no tests, no compiled code. The content prevents LLMs from generating Zig code with deprecated/removed APIs from outdated training data.
+A collection of AI coding assistant skills providing verified Zig 0.16.0 API documentation (with migration notes from 0.15.x). This is a **documentation-only repository** — no build system, no tests, no compiled code. The content prevents LLMs from generating Zig code with deprecated/removed APIs from outdated training data.
 
 ## Repository Structure
 
@@ -42,7 +42,7 @@ All content is markdown. There is no build step, linter, or test suite.
 When editing:
 - Edit files in `skills/zig/` (canonical source), then run `bash scripts/sync-ide-folders.sh` to propagate to all IDE directories
 - Use `bash scripts/sync-ide-folders.sh --verify` to check all directories are in sync
-- Code examples in markdown must target **Zig 0.15.x** — always show WRONG (old) vs CORRECT (new) patterns for breaking changes
+- Code examples in markdown must target **Zig 0.16.0** (with 0.15.x migration notes where relevant) — always show WRONG (old) vs CORRECT (new) patterns for breaking changes
 - `SKILL.md` frontmatter fields (`name`, `description`, `license`, `compatibility`, `metadata`) follow the skills format used by `npx skills`
 - Reference files are self-contained; each should work standalone without requiring other files to be loaded
 
