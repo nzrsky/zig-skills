@@ -835,7 +835,7 @@ Manage multiple Zig versions side-by-side. Useful for migrating between versions
 
 **Installation:**
 ```bash
-brew install marler8997/tap/zigup
+brew install zigup
 ```
 
 **Usage:**
@@ -868,18 +868,10 @@ Universal Zig version manager — run any Zig version from any project. Replaces
 
 **Installation:**
 ```bash
-# macOS (Apple Silicon)
-curl -L https://marler8997.github.io/anyzig/aarch64-macos/anyzig.tar.xz | tar xJ
-mv zig /usr/local/bin/zig  # replaces/shadows system zig
-
-# macOS (Intel)
-curl -L https://marler8997.github.io/anyzig/x86_64-macos/anyzig.tar.xz | tar xJ
-mv zig /usr/local/bin/zig
-
-# Linux (x86_64)
-curl -L https://marler8997.github.io/anyzig/x86_64-linux/anyzig.tar.xz | tar xJ
-sudo mv zig /usr/local/bin/zig
+brew install anyzig
 ```
+
+For other platforms, see https://github.com/marler8997/anyzig
 
 **Usage:**
 ```bash
