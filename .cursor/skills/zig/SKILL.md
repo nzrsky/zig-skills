@@ -1,6 +1,6 @@
 ---
 name: zig
-description: Up-to-date Zig programming language patterns for version 0.16.0. Use when writing, reviewing, or debugging Zig code, working with build.zig and build.zig.zon files, or using comptime metaprogramming. Critical for avoiding outdated patterns from training data - especially std.net→std.Io.net (requires Io instance), std.time timestamps removed (use clock_gettime), std.Thread.Mutex/Condition/sleep removed (use pthreads), std.crypto.random removed, build system APIs (root_module, Compile methods→Module methods), I/O APIs (buffered writer pattern), container initialization (.empty/.init), allocator selection (DebugAllocator), ArrayList now unmanaged by default, @typeInfo lowercase fields (.@"struct" not .Struct), and removed language features (async/await, usingnamespace). Also covers 0.17.0-dev deltas: b.args→run_cmd.addPassthruArgs(), std.gpu→std.spirv, @bitCast logical-bit (endian-agnostic) semantics, build configurer/maker split, and the zig-pkg/ package directory.
+description: Up-to-date Zig programming language patterns for version 0.16.0. Use when writing, reviewing, or debugging Zig code, working with build.zig and build.zig.zon files, or using comptime metaprogramming. Critical for avoiding outdated patterns from training data - especially std.net→std.Io.net (requires Io instance), std.time timestamps removed (use clock_gettime), std.Thread.Mutex/Condition/sleep removed (use pthreads), std.crypto.random removed, build system APIs (root_module, Compile methods→Module methods), I/O APIs (buffered writer pattern), container initialization (.empty/.init), allocator selection (DebugAllocator), ArrayList now unmanaged by default, @typeInfo lowercase fields (.@"struct" not .Struct), and removed language features (async/await, usingnamespace). Also covers 0.17.0-dev deltas: b.args→run_cmd.addPassthruArgs(), std.gpu→std.spirv, @bitCast logical-bit (endian-agnostic) semantics, build configurer/maker split, and the zig-pkg/ package directory. Also covers quality tooling Zig does not ship: coverage with kcov (and why in-file tests wreck the denominator), detecting unused private functions (neither the compiler nor zlint's unused-decls finds them), duplicate detection with jscpd, zlint (NOT the same-named X.509 linter in Homebrew), and the built-in fuzzer whose testOne now takes *std.testing.Smith rather than []const u8.
 license: MIT
 compatibility:
   - claude-code
@@ -833,10 +833,23 @@ Load these references when working with specific modules:
 ### Build System
 - **[std.Build](references/std-build.md)** - Build system: build.zig, modules, dependencies, build.zig.zon, steps, options, testing, C/C++ integration
 
+### Quality & Analysis
+- **[Quality Tooling](references/quality-tooling.md)** - Coverage (kcov, and why in-file tests wreck the denominator), dead-code detection (nothing finds unused *functions* — compiler laziness, zlint's `unused-decls` covers only constants), duplicate detection (jscpd + the `--max-lines` trap), zlint (⚠️ Homebrew's `zlint` is an X.509 linter), and the built-in fuzzer (`*Smith` signature, corpus economics, coverage plateaus)
+
 ### Interoperability
 - **[C Interop](references/c-interop.md)** - Exporting C-compatible APIs: `export fn`, C calling convention, building static/dynamic libraries, creating headers, macOS universal binaries, XCFramework for Swift/Xcode, module maps
 
 ## Tooling
+
+### Quality checks (coverage, dead code, duplication, lint, fuzz)
+Zig ships none of these. Full details and measurements: **[Quality Tooling](references/quality-tooling.md)**. The traps that silently produce a green result:
+
+- **Tests share the file with the code** (the only way to reach private decls), so coverage and lint reports must exclude a *line range*, not a file. Measured: 99.7% over 1325 lines with tests counted vs 99.5% over 382 without — a 3.5× difference in denominator.
+- **`kcov` works on Zig binaries** with no instrumentation, macOS included. Use `codecov.json` for per-line data (`"taken/total"` strings); `coverage.json` is summary-only.
+- **Nothing detects an unused private *function*.** The compiler never analyses it, and zlint's `unused-decls` covers constants/variables only — resolving a call through `anytype` would mean monomorphising. Rename the definition and rebuild to prove it; a syntactic "identifier occurs once" prefilter is instant and can only err by missing.
+- **`jscpd --max-lines` defaults to 1000** and skips longer files silently. Pass `--format c --formats-exts "c:zig" --max-lines 100000`.
+- ⚠️ **`zlint` in Homebrew is [zmap/zlint](https://github.com/zmap/zlint), an X.509 certificate linter.** The Zig one is [DonIsaac/zlint](https://github.com/DonIsaac/zlint), release binary only. Its config *replaces* the rule set rather than extending it.
+- **Fuzzer: `testOne` takes `*std.testing.Smith`**, not `[]const u8` (see [std.testing](references/std-testing.md)). The persisted corpus is what makes coverage guidance pay off; from an empty corpus it is no better than random. Two concurrent runs abort and leave a bogus `crash` artifact.
 
 ### ZLS (Zig Language Server)
 IDE support via Language Server Protocol. Provides autocomplete, go-to-definition, hover docs, diagnostics.

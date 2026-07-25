@@ -279,28 +279,40 @@ test "deterministic random" {
 
 ## Fuzz Testing
 
+**0.17.0-dev signature change:** `testOne` receives a `*std.testing.Smith`
+value generator, **not** a `[]const u8`. Older examples (including most
+training data) will not compile.
+
 ```zig
+// A doc comment cannot be attached to a test -- `///` here is a compile error.
 test "fuzz parser" {
-    try std.testing.fuzz(
-        {},  // context (passed to test function)
-        struct {
-            fn testOne(_: void, input: []const u8) !void {
-                // This runs with many different inputs
-                _ = myParser.parse(input) catch |err| switch (err) {
-                    error.InvalidInput => return,  // expected
-                    else => return err,
-                };
-            }
-        }.testOne,
-        .{
-            .corpus = &.{  // seed inputs
-                "valid input 1",
-                "valid input 2",
-            },
-        },
-    );
+    try std.testing.fuzz({}, fuzzOne, .{});   // .{ .corpus = &.{...} } to seed
+}
+
+fn fuzzOne(_: void, smith: *std.testing.Smith) !void {
+    var buf: [2048]u8 = undefined;
+    const n = smith.slice(&buf);              // returns bytes written
+    _ = myParser.parse(buf[0..n]) catch |err| switch (err) {
+        error.InvalidInput => return,          // expected
+        else => return err,
+    };
 }
 ```
+
+`Smith` produces structured values rather than raw input: `smith.value(T)`,
+`smith.valueRangeAtMost(T, lo, hi)`, `smith.slice(buf)`,
+`smith.eosWeightedSimple(false_w, true_w)`, `smith.boolWeighted(...)`.
+
+```bash
+zig build test --fuzz=200000   # bounded run, prints a coverage report
+zig build test --fuzz          # unbounded + web UI of covered lines
+```
+
+A plain `zig build test` runs the fuzz test once with a trivial input.
+The corpus persists in `.zig-cache/f/` and compounds across runs — that
+accumulation, not the length of any single run, is where coverage-guided
+fuzzing pays off. See [Quality Tooling](quality-tooling.md) for the
+measurements and the traps.
 
 ## Common Patterns
 
