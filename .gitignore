@@ -1,0 +1,5 @@
+# Local Claude Code state; not a sync target, and settings.local.json holds
+# machine-specific paths. Do not rely on a global gitignore for this.
+.claude/
+
+.DS_Store

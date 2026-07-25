@@ -1,22 +1,22 @@
 ---
 name: zig
-description: Up-to-date Zig programming language patterns for version 0.16.0. Use when writing, reviewing, or debugging Zig code, working with build.zig and build.zig.zon files, or using comptime metaprogramming. Critical for avoiding outdated patterns from training data - especially std.net→std.Io.net (requires Io instance), std.time timestamps removed (use clock_gettime), std.Thread.Mutex/Condition/sleep removed (use pthreads), std.crypto.random removed, build system APIs (root_module, Compile methods→Module methods), I/O APIs (buffered writer pattern), container initialization (.empty/.init), allocator selection (DebugAllocator), ArrayList now unmanaged by default, @typeInfo lowercase fields (.@"struct" not .Struct), and removed language features (async/await, usingnamespace). Also covers 0.17.0-dev deltas: b.args→run_cmd.addPassthruArgs(), std.gpu→std.spirv, @bitCast logical-bit (endian-agnostic) semantics, build configurer/maker split, and the zig-pkg/ package directory. Also covers quality tooling Zig does not ship: coverage with kcov (and why in-file tests wreck the denominator), detecting unused private functions (neither the compiler nor zlint's unused-decls finds them), duplicate detection with jscpd, zlint (NOT the same-named X.509 linter in Homebrew), and the built-in fuzzer whose testOne now takes *std.testing.Smith rather than []const u8.
+description: Up-to-date Zig programming language patterns for version 0.17.0-dev (0.16.0 stable APIs plus the 0.17 deltas). Use when writing, reviewing, or debugging Zig code, working with build.zig and build.zig.zon files, or using comptime metaprogramming. Critical for avoiding outdated patterns from training data - especially std.net→std.Io.net (requires Io instance), std.time timestamps removed (use clock_gettime), std.Thread.Mutex/Condition/sleep removed (use pthreads), std.crypto.random removed, build system APIs (root_module, Compile methods→Module methods), I/O APIs (buffered writer pattern), container initialization (.empty/.init), allocator selection (DebugAllocator), ArrayList now unmanaged by default, @typeInfo lowercase fields (.@"struct" not .Struct), and removed language features (async/await, usingnamespace). Also covers 0.17.0-dev deltas: b.args→run_cmd.addPassthruArgs(), std.gpu→std.spirv, @bitCast logical-bit (endian-agnostic) semantics, build configurer/maker split, and the zig-pkg/ package directory. Also covers quality tooling Zig does not ship: coverage with kcov (and why in-file tests wreck the denominator), detecting unused private functions (neither the compiler nor zlint's unused-decls finds them), duplicate detection with jscpd, zlint (NOT the same-named X.509 linter in Homebrew), and the built-in fuzzer whose testOne now takes *std.testing.Smith rather than []const u8.
 license: MIT
 compatibility:
   - claude-code
   - opencode
   - codex
 metadata:
-  version: "0.16.0"
+  version: "0.17.0-dev"
   language: "zig"
   category: "programming-language"
 ---
 
-# Zig Language Reference (v0.16.0)
+# Zig Language Reference (v0.17.0-dev)
 
 Zig evolves rapidly. Training data contains outdated patterns that cause compilation errors. This skill documents breaking changes and correct modern patterns.
 
-**Version coverage:** 0.16.0 (current stable) with migration notes from 0.15.x and 0.14.x, plus **0.17.0-dev** deltas (unreleased — see the section directly below).
+**Version coverage:** 0.17.0-dev (current master) — every 0.16.0 stable pattern below still holds, with migration notes from 0.15.x and 0.14.x and the 0.17 deltas in the section directly below.
 
 ## Design Principles
 
@@ -46,7 +46,7 @@ Larger cohesive files are idiomatic in Zig. Keep related code together — tests
 
 ## Critical: 0.17.0-dev changes (in progress)
 
-**Status:** 0.17.0 is **unreleased** as of mid-2026 — master/`-dev` only, no official release notes yet ([0.17.0/release-notes.html](https://ziglang.org/download/0.17.0/release-notes.html) 404s). The only migration source is the [devlog](https://ziglang.org/devlog/2026/). Every 0.16.0 pattern in the rest of this skill still applies — the items below are the *additional* deltas, verified against `0.17.0-dev.956`. Pin a dev build in `build.zig.zon` (`.minimum_zig_version = "0.17.0-dev.NNN+hash"`); anyzig fetches it.
+**Status:** 0.17.0 is **unreleased** as of mid-2026 — master/`-dev` only, no official release notes yet ([0.17.0/release-notes.html](https://ziglang.org/download/0.17.0/release-notes.html) 404s). The only migration source is the [devlog](https://ziglang.org/devlog/2026/). Every 0.16.0 pattern in the rest of this skill still applies — the items below are the *additional* deltas, verified against `0.17.0-dev.1158`. Pin a dev build in `build.zig.zon` (`.minimum_zig_version = "0.17.0-dev.NNN+hash"`); anyzig fetches it.
 
 **Unchanged from 0.16 (verified present in 0.17-dev.956):** `std.Io.net`, `std.Io.Threaded`, `std.ArrayList` (unmanaged default), `std.debug.lockStderr`, and the time/thread/crypto shims — all 0.16 sections below still hold.
 

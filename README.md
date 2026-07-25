@@ -6,7 +6,7 @@ AI coding assistant skills providing verified, version-specific Zig API document
 
 | Skill | Description | Target Version |
 |-------|-------------|----------------|
-| [zig](./skills/zig/) | Zig language API guide with 57 reference files | Zig 0.16.0 |
+| [zig](./skills/zig/) | Zig language API guide with 57 reference files | Zig 0.17.0-dev |
 
 ## Why?
 
