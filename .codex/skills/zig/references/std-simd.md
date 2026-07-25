@@ -2,6 +2,11 @@
 
 SIMD (Single Instruction, Multiple Data) utilities for parallel processing of multiple elements at once. Provides convenience functions for vector manipulation, pattern generation, searching, and parallel computation.
 
+> `@Vector` and these helpers are *portable* SIMD only. For hardware-specific ops with no
+> `@Vector` form (`udot`, `vpsadbw`, `vpmaddubsw`, `vpmaddwd`, …) — i.e. porting C
+> intrinsics — see **[Hardware SIMD intrinsics](simd-intrinsics.md)** (call LLVM
+> intrinsics via `extern fn @"llvm…"`; preferred over inline asm).
+
 ## Quick Reference
 
 | Category | Functions |

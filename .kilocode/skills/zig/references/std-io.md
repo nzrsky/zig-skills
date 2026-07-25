@@ -1,4 +1,4 @@
-# std.io - I/O API Reference (0.15.x → 0.16)
+# std.io - I/O API Reference (0.15.x → 0.16, + 0.17-dev std.Io entry points)
 
 New buffered I/O API introduced in Zig 0.15.x ("Writergate"). Non-generic, buffer-integrated Reader and Writer interfaces.
 
@@ -387,6 +387,61 @@ if (maybe_line) |line| {
     // process line
 }
 ```
+
+## 0.17-dev: Io instance, `main`, args, file read, timing
+
+The 0.17 dev branch (master) threads an `Io` instance through the program (the std.Io
+refactor). `Dir`/`File` moved from `std/fs/` to `std/Io/`; `std.time.Timer` and
+`std.process.argsAlloc` were **removed**. Verified on `0.17.0-dev` (anyzig `zig master`).
+
+### Program entry — `main` takes `std.process.Init`
+
+```zig
+pub fn main(init: std.process.Init) !void {
+    const io = init.io;                    // std.Io — pass to file/clock ops
+    const gpa = init.gpa;                  // Allocator (debug leak-checked)
+    const arena = init.arena.allocator();  // init.arena is *std.heap.ArenaAllocator
+    // also: init.minimal.args, init.environ_map, init.preopens
+}
+// `pub fn main() void` (no params) still works when you need nothing from Init.
+```
+
+### Command-line args (`std.process.argsAlloc` is GONE)
+
+```zig
+const argv = try init.minimal.args.toSlice(arena); // []const [:0]const u8 (argv[0]=program)
+```
+
+### Read a whole file — through the `Io` instance
+
+```zig
+const data = try std.Io.Dir.cwd().readFileAlloc(io, path, gpa, .unlimited);
+defer gpa.free(data);
+// signature: Dir.readFileAlloc(dir, io, sub_path, gpa, limit). Io.Limit: .unlimited / .limited(n).
+// Dir/File now live under std/Io/ (std.Io.Dir, std.Io.File); std.fs is reorganized.
+```
+
+### Monotonic timing (`std.time.Timer` removed)
+
+```zig
+const t0 = std.Io.Timestamp.now(io, .awake);   // returns Io.Timestamp{ nanoseconds: i96 }
+// ... work ...
+const ns: i128 = std.Io.Timestamp.now(io, .awake).nanoseconds - t0.nanoseconds;
+```
+`Clock` enum: `real` (wall), `awake` (monotonic, excludes suspend — use for benchmarks),
+`boot` (incl. suspend), `cpu_process`, `cpu_thread`. `std/time.zig` now holds only the
+`ns_per_*` constants.
+
+### Allocator
+
+```zig
+var gpa: std.heap.DebugAllocator(.{}) = .init; // was GeneralPurposeAllocator(.{}){}
+defer _ = gpa.deinit();
+```
+
+> Master-branch APIs, still churning — pin the toolchain (`build.zig.zon`
+> `minimum_zig_version`) when relying on them. Grep the actual std for current shapes:
+> `~/.cache/zig/p/<hash>/lib/std/{Io.zig,Io/Dir.zig,process.zig,start.zig}`.
 
 ## Common Patterns
 

@@ -1,6 +1,6 @@
 ---
 name: zig
-description: Up-to-date Zig programming language patterns for version 0.16.0. Use when writing, reviewing, or debugging Zig code, working with build.zig and build.zig.zon files, or using comptime metaprogramming. Critical for avoiding outdated patterns from training data - especially std.net→std.Io.net (requires Io instance), std.time timestamps removed (use clock_gettime), std.Thread.Mutex/Condition/sleep removed (use pthreads), std.crypto.random removed, build system APIs (root_module, Compile methods→Module methods), I/O APIs (buffered writer pattern), container initialization (.empty/.init), allocator selection (DebugAllocator), ArrayList now unmanaged by default, @typeInfo lowercase fields (.@"struct" not .Struct), and removed language features (async/await, usingnamespace).
+description: Up-to-date Zig programming language patterns for version 0.16.0. Use when writing, reviewing, or debugging Zig code, working with build.zig and build.zig.zon files, or using comptime metaprogramming. Critical for avoiding outdated patterns from training data - especially std.net→std.Io.net (requires Io instance), std.time timestamps removed (use clock_gettime), std.Thread.Mutex/Condition/sleep removed (use pthreads), std.crypto.random removed, build system APIs (root_module, Compile methods→Module methods), I/O APIs (buffered writer pattern), container initialization (.empty/.init), allocator selection (DebugAllocator), ArrayList now unmanaged by default, @typeInfo lowercase fields (.@"struct" not .Struct), and removed language features (async/await, usingnamespace). Also covers 0.17.0-dev deltas: b.args→run_cmd.addPassthruArgs(), std.gpu→std.spirv, @bitCast logical-bit (endian-agnostic) semantics, build configurer/maker split, and the zig-pkg/ package directory.
 license: MIT
 compatibility:
   - claude-code
@@ -16,7 +16,7 @@ metadata:
 
 Zig evolves rapidly. Training data contains outdated patterns that cause compilation errors. This skill documents breaking changes and correct modern patterns.
 
-**Version coverage:** 0.16.0 (current) with migration notes from 0.15.x and 0.14.x.
+**Version coverage:** 0.16.0 (current stable) with migration notes from 0.15.x and 0.14.x, plus **0.17.0-dev** deltas (unreleased — see the section directly below).
 
 ## Design Principles
 
@@ -43,6 +43,42 @@ Larger cohesive files are idiomatic in Zig. Keep related code together — tests
 - Name allocators by contract: `gpa` (caller must free), `arena` (bulk-free at boundary), `scratch` (never escapes)
 - Prefer `const` over `var` — immutability signals intent and enables optimizations
 - Prefer slices over raw pointers — bounds safety
+
+## Critical: 0.17.0-dev changes (in progress)
+
+**Status:** 0.17.0 is **unreleased** as of mid-2026 — master/`-dev` only, no official release notes yet ([0.17.0/release-notes.html](https://ziglang.org/download/0.17.0/release-notes.html) 404s). The only migration source is the [devlog](https://ziglang.org/devlog/2026/). Every 0.16.0 pattern in the rest of this skill still applies — the items below are the *additional* deltas, verified against `0.17.0-dev.956`. Pin a dev build in `build.zig.zon` (`.minimum_zig_version = "0.17.0-dev.NNN+hash"`); anyzig fetches it.
+
+**Unchanged from 0.16 (verified present in 0.17-dev.956):** `std.Io.net`, `std.Io.Threaded`, `std.ArrayList` (unmanaged default), `std.debug.lockStderr`, and the time/thread/crypto shims — all 0.16 sections below still hold.
+
+### `b.args` REMOVED → `run_cmd.addPassthruArgs()`
+The one change nearly every project needs. `build.zig` no longer observes CLI args (they now bypass build-script recompilation):
+```zig
+// WRONG (0.17) — error: no field named 'args' in struct 'Build'
+if (b.args) |args| run_cmd.addArgs(args);
+
+// CORRECT (0.17)
+run_cmd.addPassthruArgs();   // forwards `zig build run -- a b c` to the spawned process
+```
+
+### Build system reworked: configurer / maker split
+`build.zig` is now compiled in **debug** mode into a "configurer" that serializes the build graph to a binary file; a separately-cached "maker" executes it in release mode. Net effect: `zig build` invocation ~90% faster (`zig build --help` ~150ms → ~14ms) and changing build args no longer rebuilds `build.zig`. Mostly transparent — but it's *why* `b.args` had to go.
+
+### `std.gpu` → `std.spirv`
+GPU/shader namespace renamed (`std/gpu.zig` is gone, `std/spirv.zig` replaces it). `std.gpu.executionMode()` removed — execution modes now ride on the calling convention, and `@SpirvType` (new builtin) expresses samplers/images/runtime-arrays:
+```zig
+// SPIR-V entry points carry execution mode in the calling-convention payload (0.17)
+export fn comp() callconv(.{ .spirv_kernel = .{ .x = 8, .y = 8, .z = 1 } }) void {}
+// also: .spirv_vertex / .spirv_fragment / .spirv_task / .spirv_mesh
+```
+
+### `@bitCast` semantics redesign — logical bit layout (proposal #19755)
+`@bitCast` now reinterprets a type's **logical bits**, not its in-memory bytes — so it is **endian-agnostic** (aggregates behave as little-endian on every target). Newly enables casts like `[2]u3` → `@Vector(3, u2)`; now **allowed** on enums; now **disallowed** on vectors-of-pointers. Code that relied on big-endian in-memory `@bitCast` of arrays/structs changes behavior.
+
+### Package layout: `zig-pkg/` + `--fork`
+Fetched dependencies now land in a visible `zig-pkg/` at project root (previously hidden in the global cache) — add it to `.gitignore`. New `zig build --fork=<path>` temporarily overrides a dependency without editing `build.zig.zon`.
+
+### `std.Io.Evented` (experimental)
+Event-driven `Io` backends added — io_uring (Linux) and Grand Central Dispatch (macOS) — alongside `std.Io.Threaded`. Still experimental.
 
 ## Critical: Removed Features (0.15.x)
 
@@ -651,6 +687,9 @@ var server = std.http.Server.init(
 | `no field named 'open'` on HTTP | Use `client.request()` or `client.fetch()` |
 | `expected error union, found Signature` | `Ed25519.Signature.fromBytes()` doesn't return error — remove `try` |
 | `addSharedLibrary` not found | Use `b.addLibrary(.{ .linkage = .dynamic, ... })` |
+| `no field named 'args' in struct 'Build'` | Removed in 0.17: `run_cmd.addPassthruArgs()` instead of `if (b.args) |a| run_cmd.addArgs(a)` |
+| `'std' has no member named 'gpu'` | Renamed in 0.17: `std.spirv`; `executionMode()` → calling-convention payload |
+| ZLS build: `Zig version ... is not yet supported` | ZLS pins an exact dev Zig — build with the README-pinned version: `zig <pinned> build` |
 
 ## Verification Workflow
 
@@ -715,6 +754,7 @@ Load these references when working with specific modules:
 
 ### SIMD & Vectorization
 - **[std.simd](references/std-simd.md)** - SIMD vector utilities: optimal vector length, iota/repeat/join/interlace patterns, element shifting/rotation, parallel searching, prefix scans, branchless selection
+- **[Hardware SIMD intrinsics](references/simd-intrinsics.md)** - Beyond `@Vector`: calling LLVM target intrinsics (`extern fn @"llvm.x86.avx2.pmadd.wd"` / `@"llvm.aarch64.neon.udot…"`) for ops with no `@Vector` form (udot, vpsadbw, vpmaddubsw); why this beats inline asm (optimizer-transparent vs opaque); perf gotchas (natural result layout, comptime mode params, manual unroll); cross-arch validation via Rosetta / static-musl + scp / asm-diff
 
 ### Time & Timing
 - **[std.time](references/std-time.md)** - Wall-clock timestamps, monotonic Instant/Timer, epoch conversions, calendar utilities (year/month/day), time unit constants
@@ -765,6 +805,7 @@ Load these references when working with specific modules:
 - **[std.atomic](references/std-atomic.md)** - Lock-free atomic operations: Value wrapper, fetch-and-modify (add/sub/and/or/xor), compare-and-swap, atomic ordering semantics, spin loop hints, cache line sizing
 
 ### Patterns & Best Practices
+- **[Data-Oriented Design](references/data-oriented-design.md)** - **Load when designing data structures for hot paths, large homogeneous collections, compilers/parsers, ECS, or any memory-footprint-bound code.** From Andrew Kelly's DoD talk applied to the Zig compiler: cache-line mental model (CPU fast, memory slow; compute over memoize), struct size/alignment/padding rules, and six shrink-the-struct techniques — indexes instead of pointers (with `enum(u32)` newtype handles), booleans out of band, struct-of-arrays via MultiArrayList, sparse data in hash maps, encodings instead of fat tagged unions, and constraining ranges/dropping derivable data. Includes the compiler case study (token 64→5 B, AST 120→15.6 B, ZIR 54→20.3 B; −22% then −39% wall-clock) and an anti-pattern checklist
 - **[Zig Patterns](references/patterns.md)** - **Load when writing new code or reviewing code quality.** Comprehensive best practices extracted from the Zig standard library: quick patterns (memory/allocators, file I/O, HTTP, JSON, testing, build system) plus idiomatic code patterns covering syntax (closures, context pattern, options structs, destructuring), polymorphism (duck typing, generics, custom formatting, dynamic/static dispatch), safety (diagnostics, error payloads, defer/errdefer, compile-time assertions), and performance (const pointer passing)
 - **[Production Patterns](references/production-patterns.md)** - **Load when building large-scale Zig systems or optimizing performance.** Real-world patterns from Bun, Ghostty, TigerBeetle: modular build systems, CPU feature locking, pre-allocated message pools, counting allocators, SIMD with scalar fallback, intrusive linked lists, cache-line aligned SoA, work-stealing thread pools, SmolStr (15-byte SSO), comptime string maps, EnumUnionType generation, VOPR fuzzing, snapshot testing, edge-biased fuzz generation, platform abstraction facades, Objective-C bridges, opaque C wrappers with RAII, packed struct bitfields, Result union types, radix sort, tournament trees
 - **[MCP Server Patterns](references/mcp-server-patterns.md)** - **Load when building MCP servers, LSP bridges, JSON-RPC services, or protocol translators in Zig.** Patterns from zig-mcp: newline-delimited vs Content-Length transport, thread-based request correlation with ResetEvent, arena-per-request memory, child process lifecycle with pipe ownership transfer, tool registry with function pointers, std.json.Stringify for manual JSON building, lazy document sync with double-check locking, graceful degradation, auto-reconnect on crash, comptime schema generation, file URI encoding, common serialization gotchas
@@ -801,6 +842,19 @@ Load these references when working with specific modules:
 IDE support via Language Server Protocol. Provides autocomplete, go-to-definition, hover docs, diagnostics.
 
 **Version matching rule:** Use ZLS release matching your Zig release (0.15.x ZLS for 0.15.x Zig). Nightly Zig needs nightly ZLS.
+
+**Nightly/`-dev` gotcha (learned the hard way):** ZLS `master` pins an *exact* Zig dev build (see `minimum_zig_version` in its `build.zig.zon` and the "default branch targets `0.17.0-dev.NNN`" line in its README), and `build.zig` hard-errors on Zig newer than its supported window (`The used Zig version ... is not yet supported by ZLS`). Two traps:
+- ZLS `master` often lags the latest Zig `master` by weeks, so the newest downloadable Zig (`zig version`) may be *rejected* by ZLS.
+- ziglang.org's CDN keeps only the latest `master` build plus tagged releases — **older `-dev` builds get pruned and 404** on download. The exact version ZLS pins may or may not still be downloadable.
+
+Build ZLS against its README-pinned Zig explicitly (anyzig will fetch it if still available):
+```bash
+cd zls
+git pull                                      # ZLS master targets newest supported Zig
+grep -n "default branch.*targets\|0\.1" README.md   # find the pinned 0.NN.0-dev.NNN+hash
+zig <pinned-version> build -Doptimize=ReleaseSafe   # e.g. zig 0.17.0-dev.387+31f157d80 build
+```
+If the pinned build 404s, either use a Zig version inside ZLS's supported range (`build.zig` rejects `>= max`), or wait for ZLS to bump its pin to a currently-downloadable Zig.
 
 **Installation:**
 ```bash
@@ -899,3 +953,51 @@ zig any --help
     // ...
 }
 ```
+
+### Profiling (macOS / Apple Silicon)
+
+Two complementary angles: **deterministic allocation counts** (no sampling noise, immune to inlining) and **CPU sampling** (where wall-time goes).
+
+**Allocation profiling — wrap the allocator, count calls.** The single best signal for "is this parser/codec alloc-bound?". A counting `Allocator` vtable wrapper over a child allocator tallies alloc/resize/remap/free + bytes + peak-live. Run one parse, print the tally. Deterministic and reproducible — e.g. it instantly reveals a "dupe-per-string" parser doing ~1 malloc per token (thousands of allocs for a small file) vs an arena parser doing a handful. Caveat: an arena-based parser hides logical allocations behind a few big chunk mallocs — to count *logical* requests, wrap the arena's allocator, not its backing allocator.
+
+```zig
+const Counting = struct {
+    child: std.mem.Allocator,
+    allocs: usize = 0, bytes: usize = 0, live: usize = 0, peak: usize = 0,
+    pub fn allocator(self: *Counting) std.mem.Allocator {
+        return .{ .ptr = self, .vtable = &.{ .alloc = a, .resize = r, .remap = rm, .free = f } };
+    }
+    fn a(ctx: *anyopaque, len: usize, al: std.mem.Alignment, ra: usize) ?[*]u8 {
+        const s: *Counting = @ptrCast(@alignCast(ctx));
+        const p = s.child.rawAlloc(len, al, ra) orelse return null;
+        s.allocs += 1; s.bytes += len; s.live += len; s.peak = @max(s.peak, s.live);
+        return p;
+    }
+    // resize/remap update live; free does live -= buf.len; all delegate to s.child.raw*()
+};
+```
+
+**CPU sampling — Instruments via `xctrace` (works; needs dSYM).** `instruments` GUI launcher is gone in recent Xcode; use the `xctrace` CLI. The critical step is `dsymutil`: **with a dSYM, `xctrace export` symbolicates even inlined frames**, so a ReleaseFast recursive-descent parser (everything inlined into `main`) still shows per-function attribution. Without it you get a flat `main+0xNNNN` blob — which is also why bare `/usr/bin/sample` is nearly useless on optimized Zig.
+
+```bash
+zig build                                   # do NOT strip; keep debug info
+dsymutil ./zig-out/bin/bench                # -> bench.dSYM (symbolicates inlined frames)
+xctrace record --template 'Time Profiler' --time-limit 5s \
+  --output prof.trace --launch -- ./zig-out/bin/bench <args>   # or: --attach <pid>
+open prof.trace                             # GUI: call tree / flame graph / source
+# CLI export (XML only, slow):
+xctrace export --input prof.trace \
+  --xpath '/trace-toc/run[@number="1"]/data/table[@schema="time-profile"]' --output tp.xml
+# then aggregate symbol names out of the backtraces (grep/sort/uniq)
+```
+
+Gotchas:
+- **ReleaseFast inlines aggressively** → leaf attribution merges. dSYM symbolication of inline frames usually recovers it; otherwise profile **ReleaseSafe** (less inlining, still optimized) or mark hot fns `noinline` temporarily.
+- `xctrace export` is XML-only and slow; for interactive use prefer `open prof.trace`.
+- Apple Silicon historically limited *kernel* callstack sampling, but user-space Time Profiler works fine.
+
+**Alternatives (often nicer on Apple Silicon):**
+- **`samply record ./bin <args>`** — opens the Firefox Profiler UI (call tree, flamegraph, source). `brew install samply` / `cargo install samply`.
+- **`poop ./old ./new`** — A/B compare two binaries on hardware counters (instructions, branch misses, cache misses). Ideal for before/after on an optimization. Linux-native; on macOS counters are limited.
+
+See **[Production Patterns](references/production-patterns.md)** (counting allocators) for the full instrumented-allocator pattern.
